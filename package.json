@@ -1,6 +1,6 @@
 {
   "name": "@wostafa/tdweb",
-  "version": "0.0.1",
+  "version": "1.8.10",
   "description": "JavaScript interface for TDLib (Telegram library)",
   "main": "dist/tdweb.js",
   "repository": {
@@ -15,7 +15,9 @@
     "start": "webpack-dev-server --open"
   },
   "keywords": [
-    "telegram", "tdweb", "tdlib"
+    "telegram",
+    "tdweb",
+    "tdlib"
   ],
   "author": "Wostafa",
   "license": "MIT",
