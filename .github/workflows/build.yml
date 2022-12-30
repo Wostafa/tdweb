@@ -1,0 +1,130 @@
+name: Build TDWeb
+
+on:
+  workflow_dispatch:
+    inputs:
+      version: 
+        required: true
+      ref:
+        default: master
+        description: TDLib repo ref (commit/tag/branch)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: repo
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 15
+          
+      - name: Install webpack
+        run: npm install -g webpack
+        
+      - name: Checkout EMSDK
+        uses: actions/checkout@v2
+        with:
+          repository: emscripten-core/emsdk
+          path: emsdk
+        
+      - name: Set-up EMSDK
+        run: |
+          cd emsdk
+          ./emsdk install 2.0.6
+          ./emsdk activate 2.0.6
+          cd ..
+        shell: bash
+        
+      - name: Install TDLib dependencies
+        run: sudo apt install cmake make clang openssl zlib1g gperf php
+        shell: bash
+      
+      - name: Checkout TDLib
+        uses: actions/checkout@v2
+        with:
+          repository: tdlib/td
+          ref: ${{ github.event.inputs.ref }}
+          path: td
+      
+      - name: Patch build script
+        run: |
+          sed -i -- 's/set(TD_LINKER_FLAGS "-Wl,--gc-sections -Wl,--exclude-libs,ALL")/# set(TD_LINKER_FLAGS "-Wl,--gc-sections -Wl,--exclude-libs,ALL")/g' "${GITHUB_WORKSPACE}/td/CMake/TdSetUpCompiler.cmake"
+        shell: bash
+      
+      - name: Build OpenSSL
+        run: |
+          cd emsdk
+          source ./emsdk_env.sh
+          cd ../td/example/web
+          ./build-openssl.sh
+        shell: bash
+        
+      - name: Build TDLib
+        run: |
+          cd emsdk
+          source ./emsdk_env.sh
+          cd ../td/example/web
+          ./build-tdlib.sh
+        shell: bash
+        
+      - name: Copy TDLib
+        run: |
+          cd emsdk
+          source ./emsdk_env.sh
+          cd ../td/example/web
+          ./copy-tdlib.sh
+        shell: bash
+        
+      - name: Build TDWeb
+        run:  |
+          cd emsdk
+          source ./emsdk_env.sh
+          cd ../td/example/web
+          ./build-tdweb.sh
+   
+
+      - name: Install tdweb dependencies
+        run: |
+          cd repo
+          npm ci
+        
+      - name: Replace src and dist folders
+        run: |
+          rm -rf ./repo/src
+          cp -r ./td/example/web/tdweb/src ./repo
+          rm -rf ./repo/dist
+          cp -r ./td/example/web/tdweb/dist ./repo
+      
+      - name: Commit changes
+        uses: zwaldowski/git-commit-action@v1
+        with:
+          working_directory: ./repo
+          commit_message: Updated to ${{ github.event.inputs.version }}
+          
+      - name: Update npm version
+        run: |
+          cd repo
+          npm version ${{ github.event.inputs.version }}
+          git tag -d v${{ github.event.inputs.version }}
+          git reset --soft HEAD~2
+          
+      - name: Commit changes again
+        uses: zwaldowski/git-commit-action@v1
+        with:
+          working_directory: ./repo
+          commit_message: Updated to ${{ github.event.inputs.version }}
+          
+      - name: Tag & push
+        run: |
+          cd repo
+          git tag v${{ github.event.inputs.version }}
+          git push
+          
+      - name: Publish to NPM
+        uses: JS-DevTools/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+          package: ./repo/package.json
